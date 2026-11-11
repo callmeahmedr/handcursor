@@ -1,7 +1,47 @@
+# macOS
 .DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+
+# Swift / Xcode build output
 .build/
 .swiftpm/
+DerivedData/
+*.xcodeproj/xcuserdata/
+xcuserdata/
+*.xcuserstate
+
+# Release artifacts (built by scripts/make-dmg.sh, published via Releases)
 dist/
 *.dmg
 *.zip
+*.app
+*.dSYM/
+
+# Local tooling and AI assistants
+.claude/
+.cursor/
+.vscode/
+.idea/
+
+# Secrets and local config
+.env
+.env.*
+*.pem
+*.p12
+*.key
+*.mobileprovision
+
+# Python caches (icon/banner/sound scripts)
+__pycache__/
+*.pyc
+.venv/
+
+# Scratch
+*.log
+*.tmp
+*.swp
 assets/unused/
