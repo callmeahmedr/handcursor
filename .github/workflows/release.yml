@@ -1,0 +1,24 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+jobs:
+  release:
+    runs-on: macos-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the DMG
+        env:
+          HANDCURSOR_VERSION: ${{ github.ref_name }}
+        run: |
+          export HANDCURSOR_VERSION="${HANDCURSOR_VERSION#v}"
+          ./scripts/make-dmg.sh
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "${{ github.ref_name }}" dist/*.dmg --generate-notes

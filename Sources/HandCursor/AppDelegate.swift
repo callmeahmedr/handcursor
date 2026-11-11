@@ -1,0 +1,219 @@
+import AppKit
+import Carbon.HIToolbox
+
+final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
+    private var statusItem: NSStatusItem!
+    private let overlay = OverlayController()
+    private let settings = SettingsWindow()
+    private let welcome = WelcomeWindow()
+    private let menu = NSMenu()
+    private var toggleItem: NSMenuItem?
+    private var soundItem: NSMenuItem?
+    private var toggleHotKey: UInt32?
+    private lazy var automation = Automation(overlay: overlay)
+    private var launched = false
+    private var pendingURLs: [URL] = []
+
+    func application(_ application: NSApplication, open urls: [URL]) {
+        guard launched else {
+            pendingURLs += urls
+            return
+        }
+        urls.forEach(automation.handle)
+    }
+
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        NSApp.mainMenu = editingMenu()
+        HandAsset.preloadThumbnails(PointerStyle.allCases.compactMap(\.assetName))
+        Log.write("launch \(Bundle.main.bundlePath)")
+        CursorHider.enableBackgroundHiding()
+        overlay.onActiveChanged = { [weak self] in
+            self?.updateIcon()
+            self?.automation.writeState()
+        }
+        overlay.onSoundChanged = { [weak self] in
+            self?.refreshMenu()
+            self?.automation.writeState()
+        }
+        enableLaunchAtLoginOnFirstRun()
+        setupStatusItem()
+        setupSettings()
+        registerHotKeys()
+
+        welcome.onTryIt = { [weak self] in
+            self?.overlay.activate()
+        }
+        if !UserDefaults.standard.bool(forKey: WelcomeWindow.shownKey) {
+            welcome.show()
+        }
+
+        automation.writeState()
+        launched = true
+        pendingURLs.forEach(automation.handle)
+        pendingURLs = []
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        overlay.deactivate()
+        try? FileManager.default.removeItem(at: Automation.stateURL)
+    }
+
+    private func setupStatusItem() {
+        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        updateIcon()
+        statusItem.button?.target = self
+        statusItem.button?.action = #selector(statusClicked)
+        statusItem.button?.sendAction(on: [.leftMouseUp, .rightMouseUp])
+
+        let toggle = NSMenuItem(title: "", action: #selector(toggle), keyEquivalent: "")
+        let sound = NSMenuItem(title: "Tap Sound", action: #selector(toggleSound), keyEquivalent: "")
+        toggleItem = toggle
+        soundItem = sound
+        menu.addItem(toggle)
+        menu.addItem(sound)
+        menu.addItem(.separator())
+        menu.addItem(NSMenuItem(title: "Settings…", action: #selector(openSettings), keyEquivalent: ","))
+        menu.addItem(.separator())
+        menu.addItem(NSMenuItem(title: "Quit \(AppInfo.name)", action: #selector(quit), keyEquivalent: "q"))
+        menu.items.forEach { $0.target = self }
+        menu.delegate = self
+    }
+
+    private func setupSettings() {
+        settings.applyToggleShortcut = { [weak self] s in
+            self?.apply(s) ?? false
+        }
+        settings.onRecording = { [weak self] recording in
+            if recording {
+                self?.unregisterHotKeys()
+            } else {
+                self?.registerHotKeys()
+            }
+        }
+    }
+
+    @objc private func statusClicked() {
+        let event = NSApp.currentEvent
+        let wantsMenu = event?.type == .rightMouseUp || event?.modifierFlags.contains(.control) == true
+        guard wantsMenu else {
+            overlay.toggle()
+            return
+        }
+        refreshMenu()
+        statusItem.menu = menu
+        statusItem.button?.performClick(nil)
+        statusItem.menu = nil
+    }
+
+    func menuWillOpen(_ menu: NSMenu) {
+        overlay.suspendInput(true)
+    }
+
+    func menuDidClose(_ menu: NSMenu) {
+        overlay.suspendInput(false)
+    }
+
+    private func refreshMenu() {
+        let on = overlay.isActive
+        toggleItem?.title = "\(on ? "Turn Pointer Off" : "Turn Pointer On")    \(Preferences.toggleShortcut.display)"
+        soundItem?.state = overlay.soundOn ? .on : .off
+    }
+
+    private func apply(_ s: Shortcut) -> Bool {
+        unregisterHotKeys()
+        let old = Preferences.toggleShortcut
+        Preferences.toggleShortcut = s
+        if registerHotKeys() {
+            return true
+        }
+        unregisterHotKeys()
+        Preferences.toggleShortcut = old
+        registerHotKeys()
+        return false
+    }
+
+    @discardableResult
+    private func registerHotKeys() -> Bool {
+        guard toggleHotKey == nil else {
+            return true
+        }
+        let t = Preferences.toggleShortcut
+        toggleHotKey = HotKeyCenter.shared.register(keyCode: t.keyCode, modifiers: t.modifiers) { [weak self] in
+            self?.overlay.toggle()
+        }
+        return toggleHotKey != nil
+    }
+
+    private func unregisterHotKeys() {
+        if let id = toggleHotKey {
+            HotKeyCenter.shared.unregister(id)
+        }
+        toggleHotKey = nil
+    }
+
+    @objc private func toggle() {
+        overlay.toggle()
+    }
+
+    @objc private func toggleSound() {
+        overlay.soundOn.toggle()
+    }
+
+    @objc private func openSettings() {
+        overlay.exit()
+        settings.show()
+    }
+
+    @objc private func quit() {
+        overlay.deactivate()
+        NSApp.terminate(nil)
+    }
+
+    private func enableLaunchAtLoginOnFirstRun() {
+        let key = "loginItemSetUp"
+        let path = Bundle.main.bundlePath
+        let installed = path.hasPrefix("/Applications/") || path.hasPrefix(NSHomeDirectory() + "/Applications/")
+        guard installed, !UserDefaults.standard.bool(forKey: key) else {
+            return
+        }
+        UserDefaults.standard.set(true, forKey: key)
+        Preferences.launchAtLogin = true
+        Log.write("first run: open at login = \(Preferences.launchAtLogin)")
+    }
+
+    private func updateIcon() {
+        let on = overlay.isActive
+        let image = Bundle.main.image(forResource: on ? "menubar_on" : "menubar_off")
+            ?? NSImage(systemSymbolName: on ? "hand.point.up.left.fill" : "hand.point.up.left",
+                       accessibilityDescription: AppInfo.name)
+        image?.size = NSSize(width: 18, height: 18)
+        image?.isTemplate = true
+        statusItem.button?.image = image
+        statusItem.button?.toolTip = overlay.isActive
+            ? "\(AppInfo.name) is on — click to turn off, right-click for the menu"
+            : "\(AppInfo.name) — click to turn on, right-click for the menu"
+    }
+
+    private func editingMenu() -> NSMenu {
+        let main = NSMenu()
+        let appItem = NSMenuItem()
+        let appMenu = NSMenu()
+        appMenu.addItem(withTitle: "Close Window", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
+        appMenu.addItem(withTitle: "Quit \(AppInfo.name)", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        appItem.submenu = appMenu
+        main.addItem(appItem)
+        let editItem = NSMenuItem()
+        let edit = NSMenu(title: "Edit")
+        edit.addItem(withTitle: "Undo", action: Selector(("undo:")), keyEquivalent: "z")
+        let redo = edit.addItem(withTitle: "Redo", action: Selector(("redo:")), keyEquivalent: "z")
+        redo.keyEquivalentModifierMask = [.command, .shift]
+        edit.addItem(.separator())
+        edit.addItem(withTitle: "Cut", action: #selector(NSText.cut(_:)), keyEquivalent: "x")
+        edit.addItem(withTitle: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c")
+        edit.addItem(withTitle: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v")
+        edit.addItem(withTitle: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a")
+        editItem.submenu = edit
+        main.addItem(editItem)
+        return main
+    }
+}
